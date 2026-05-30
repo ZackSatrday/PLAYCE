@@ -49,7 +49,7 @@ export function AuthScreen() {
   }
 
   const onSignIn = useCallback(
-    async (e: React.FormEvent) => {
+    async (e: React.SubmitEvent) => {
       e.preventDefault();
       setError(null);
       setInfo(null);
@@ -74,7 +74,7 @@ export function AuthScreen() {
   );
 
   const onRegister = useCallback(
-    async (e: React.FormEvent) => {
+    async (e: React.SubmitEvent) => {
       e.preventDefault();
       setError(null);
       setInfo(null);
