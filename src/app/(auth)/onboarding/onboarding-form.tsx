@@ -34,21 +34,24 @@ export function OnboardingForm() {
     let cancelled = false;
 
     async function loadSession() {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      try {
+        const supabase = createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      if (!user) {
-        router.replace("/login");
-        return;
+        if (!user) {
+          router.replace("/login");
+          return;
+        }
+
+        const suggestion = suggestedUsernameFromEmail(user.email);
+        if (suggestion) setUsername(suggestion);
+      } finally {
+        if (!cancelled) setCheckingSession(false);
       }
-
-      const suggestion = suggestedUsernameFromEmail(user.email);
-      if (suggestion) setUsername(suggestion);
-      setCheckingSession(false);
     }
 
     void loadSession();
