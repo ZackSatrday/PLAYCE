@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { isValidPublicUsername } from "@/lib/utils";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 function safeNextParam(raw: string | null): string {
   if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/dashboard";
@@ -32,6 +32,11 @@ export function AuthScreen() {
       ? `/login?register=1&next=${encodeURIComponent(nextPath)}`
       : "/login?register=1";
 
+  useEffect(() => {
+    const msg = searchParams.get("error");
+    if (msg) setError(msg);
+  }, [searchParams]);
+
   async function signInWithGoogle() {
     setError(null);
     setInfo(null);
@@ -42,8 +47,11 @@ export function AuthScreen() {
         provider: "google",
         options: { redirectTo: getAuthCallbackUrl(nextPath) },
       });
-      if (oErr) setError(oErr.message);
-    } finally {
+      if (oErr) {
+        setError(oErr.message);
+        setLoading(false);
+      }
+    } catch {
       setLoading(false);
     }
   }

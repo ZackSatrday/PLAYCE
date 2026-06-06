@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono, Oswald } from "next/font/google";
-import { ThemeProvider } from "@/contexts/theme-context";
+import { ThemeProvider } from "@/context/theme-context";
 import "./globals.css";
 
 const inter = Inter({
