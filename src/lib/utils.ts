@@ -50,3 +50,19 @@ export function isValidPublicUsername(raw: string): boolean {
   if (s.length < 3 || s.length > 24) return false;
   return /^[a-zA-Z0-9_-]+$/.test(s);
 }
+
+export function userNeedsUsername(user: User | null): boolean {
+  if (!user) return false;
+  const raw = user.user_metadata?.username;
+  return !(typeof raw === "string" && isValidPublicUsername(raw));
+}
+
+/** Suggested handle from email local part (may still fail length/rules). */
+export function suggestedUsernameFromEmail(
+  email: string | null | undefined,
+): string {
+  if (!email?.trim()) return "";
+  const local = email.split("@")[0]?.trim() ?? "";
+  const sanitized = local.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24);
+  return isValidPublicUsername(sanitized) ? sanitized : "";
+}

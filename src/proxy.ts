@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { userNeedsUsername } from "@/lib/utils";
 import { type NextRequest, NextResponse } from "next/server";
 
 function copySessionCookies(from: NextResponse, to: NextResponse) {
@@ -82,7 +83,43 @@ export async function proxy(request: NextRequest) {
     return redirectResponse;
   }
 
+  if (!user && pathname === "/onboarding") {
+    const login = new URL("/login", request.url);
+    const redirectResponse = NextResponse.redirect(login);
+    copySessionCookies(supabaseResponse, redirectResponse);
+    return redirectResponse;
+  }
+
+  if (user && userNeedsUsername(user)) {
+    if (isProtectedPath(pathname)) {
+      const onboarding = request.nextUrl.clone();
+      onboarding.pathname = "/onboarding";
+      onboarding.searchParams.delete("register");
+      onboarding.searchParams.set(
+        "next",
+        `${pathname}${request.nextUrl.search}`,
+      );
+      const redirectResponse = NextResponse.redirect(onboarding);
+      copySessionCookies(supabaseResponse, redirectResponse);
+      return redirectResponse;
+    }
+  }
+
+  if (user && !userNeedsUsername(user) && pathname === "/onboarding") {
+    const dashboard = new URL("/dashboard", request.url);
+    const redirectResponse = NextResponse.redirect(dashboard);
+    copySessionCookies(supabaseResponse, redirectResponse);
+    return redirectResponse;
+  }
+
   if (user && pathname === "/login") {
+    if (userNeedsUsername(user)) {
+      const onboarding = new URL("/onboarding", request.url);
+      const redirectResponse = NextResponse.redirect(onboarding);
+      copySessionCookies(supabaseResponse, redirectResponse);
+      return redirectResponse;
+    }
+
     const dashboard = new URL("/dashboard", request.url);
     const redirectResponse = NextResponse.redirect(dashboard);
     copySessionCookies(supabaseResponse, redirectResponse);

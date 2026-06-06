@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { Avatar } from "@/components/ui/avatar";
-import { useTheme } from "@/contexts/theme-context";
+import { useTheme } from "@/context/theme-context";
 import { createClient } from "@/lib/supabase/client";
 import { avatarInitialsFromUser, cn, displayNameFromUser } from "@/lib/utils";
 

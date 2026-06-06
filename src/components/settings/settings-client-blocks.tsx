@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useTheme, type ThemePreference } from "@/contexts/theme-context";
+import { useTheme, type ThemePreference } from "@/context/theme-context";
 import { cn } from "@/lib/utils";
 
 const themes: {
