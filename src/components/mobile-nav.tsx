@@ -62,7 +62,11 @@ export function MobileNav() {
   const initials = avatarInitialsFromUser(user);
 
   async function handleNavClick(href: string) {
-    await saveCurrentProgress();
+    try {
+      await saveCurrentProgress();
+    } catch (error) {
+      console.error("Failed to save progress during mobile navigation:", error);
+    }
     router.push(href);
     router.refresh();
     setIsOpen(false);
@@ -76,7 +80,7 @@ export function MobileNav() {
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-5 right-5 z-50 md:hidden flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg transition-transform duration-200 active:scale-95 focus:outline-none"
+        className="fixed bottom-5 right-5 z-50 md:hidden flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg transition-transform duration-200 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-neutral-900"
         aria-label={isOpen ? "Close menu" : "Open menu"}
       >
         {isOpen ? <X className="size-6" /> : <Menu className="size-6" />}

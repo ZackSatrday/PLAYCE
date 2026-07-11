@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Player } from "@/components/player";
 import { usePlayer } from "@/context/player-context";
@@ -28,7 +28,17 @@ type PlaylistViewProps = {
 };
 
 export function PlaylistView({ playlist, videos }: PlaylistViewProps) {
-  const { setActiveVideoId } = usePlayer();
+  const router = useRouter();
+  const { setActiveVideoId, saveCurrentProgress } = usePlayer();
+
+  const handleNavClick = useCallback(
+    async (href: string) => {
+      await saveCurrentProgress();
+      router.push(href);
+      router.refresh();
+    },
+    [saveCurrentProgress, router],
+  );
   const [items, setItems] = useState<Video[]>(videos);
   const [activeYtId, setActiveYtId] = useState(
     () => videos[0]?.yt_video_id ?? "",
@@ -161,12 +171,13 @@ export function PlaylistView({ playlist, videos }: PlaylistViewProps) {
     return (
       <div className="mx-auto w-full max-w-[1200px] flex-1 px-6 py-12 text-center">
         <p className="text-[var(--foreground)]">This playlist has no videos.</p>
-        <Link
-          href="/dashboard"
+        <button
+          type="button"
+          onClick={() => void handleNavClick("/dashboard")}
           className="mt-4 inline-block text-sm font-semibold text-[var(--accent)] hover:underline"
         >
           Back to dashboard
-        </Link>
+        </button>
       </div>
     );
   }
@@ -183,13 +194,14 @@ export function PlaylistView({ playlist, videos }: PlaylistViewProps) {
     <div className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col gap-6 px-6 py-8 lg:flex-row">
       <div className="min-w-0 flex-1 space-y-4">
         <header className="space-y-3">
-          <Link
-            href="/dashboard"
+          <button
+            type="button"
+            onClick={() => void handleNavClick("/dashboard")}
             className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline md:hidden"
           >
             <ArrowLeft className="size-4" />
             Back to Dashboard
-          </Link>
+          </button>
           <div>
             <h1 className="font-display text-xl font-bold tracking-wide text-[var(--foreground)]">
               {playlist.title}
