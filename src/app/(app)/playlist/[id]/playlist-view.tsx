@@ -33,7 +33,11 @@ export function PlaylistView({ playlist, videos }: PlaylistViewProps) {
 
   const handleNavClick = useCallback(
     async (href: string) => {
-      await saveCurrentProgress();
+      try {
+        await saveCurrentProgress();
+      } catch (error) {
+        console.error("Failed to save progress during navigation:", error);
+      }
       router.push(href);
       router.refresh();
     },
