@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Topbar } from "@/components/topbar";
+import { MobileNav } from "@/components/mobile-nav";
 
 export function AppLayoutBody({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -14,6 +15,7 @@ export function AppLayoutBody({ children }: { children: React.ReactNode }) {
         <Topbar />
         <main className="flex flex-1 flex-col overflow-auto">{children}</main>
       </div>
+      <MobileNav />
     </div>
   );
 }

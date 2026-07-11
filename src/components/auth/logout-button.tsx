@@ -25,7 +25,7 @@ export function LogoutButton() {
       type="button"
       disabled={pending}
       onClick={() => void logout()}
-      className="text-left hover:text-[var(--foreground)] disabled:opacity-60"
+      className="w-full h-10 rounded-lg border border-[var(--border)] text-sm font-semibold text-blue-600 dark:text-blue-400 hover:bg-[var(--hover-bg)] transition-colors disabled:opacity-60 flex items-center justify-center"
     >
       {pending ? "Signing out…" : "Logout"}
     </button>

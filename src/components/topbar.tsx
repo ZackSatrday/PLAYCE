@@ -64,7 +64,7 @@ export function Topbar() {
             <BellIcon className="size-5" />
           </button>
           
-          <div className="flex min-w-0 items-center gap-3 border-l border-[var(--border)] pl-4">
+          <div className="hidden min-w-0 items-center gap-3 border-l border-[var(--border)] pl-4 md:flex">
             <div className="hidden min-w-0 text-right sm:block">
               <p className="truncate text-sm font-semibold text-[var(--foreground)]">
                 {label}
