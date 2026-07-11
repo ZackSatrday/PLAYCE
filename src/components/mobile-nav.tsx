@@ -10,6 +10,9 @@ import { usePlaylists } from "@/hooks/use-playlists";
 import { displayNameFromUser, avatarInitialsFromUser } from "@/lib/utils";
 import { LogoutButton } from "@/components/auth/logout-button";
 
+/**
+ * Renders a mobile navigation drawer with route-aware navigation, playlist progress, and account controls.
+ */
 export function MobileNav() {
   const router = useRouter();
   const pathname = usePathname();

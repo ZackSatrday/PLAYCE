@@ -22,6 +22,12 @@ function isActive(pathname: string, label: string) {
   return false;
 }
 
+/**
+ * Renders the application sidebar and navigates between sections while saving current player progress.
+ *
+ * @param pathname - The current pathname used to determine the active navigation item
+ * @returns The application sidebar
+ */
 export function AppSidebar({ pathname }: AppSidebarProps) {
   const router = useRouter();
   const { saveCurrentProgress } = usePlayer();

@@ -20,6 +20,11 @@ function formatStat(n: number) {
   return String(Math.round(n));
 }
 
+/**
+ * Renders the dashboard with the authenticated user's greeting, learning statistics, and saved playlists.
+ *
+ * Supports adding and deleting playlists and synchronizes the add-playlist modal with the URL hash.
+ */
 export function DashboardContent() {
   const { cards, stats, isLoading, error, refresh, deletePlaylist } = usePlaylists();
   const [user, setUser] = useState<User | null>(null);

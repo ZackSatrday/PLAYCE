@@ -4,6 +4,11 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+/**
+ * Renders a button that signs the user out globally and navigates to the login page.
+ *
+ * @returns A logout button that displays progress while signing out.
+ */
 export function LogoutButton() {
   const router = useRouter();
   const [pending, setPending] = useState(false);

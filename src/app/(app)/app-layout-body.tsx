@@ -5,6 +5,11 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { Topbar } from "@/components/topbar";
 import { MobileNav } from "@/components/mobile-nav";
 
+/**
+ * Renders the application layout with sidebar, topbar, main content, and mobile navigation.
+ *
+ * @param children - The content rendered within the main area
+ */
 export function AppLayoutBody({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 

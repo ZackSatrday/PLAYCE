@@ -13,6 +13,9 @@ function safeNextParam(raw: string | null): string {
   return raw;
 }
 
+/**
+ * Renders the onboarding form for authenticated users to choose a public username.
+ */
 export function OnboardingForm() {
   const router = useRouter();
   const searchParams = useSearchParams();

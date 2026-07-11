@@ -9,6 +9,11 @@ import { avatarInitialsFromUser, cn, displayNameFromUser } from "@/lib/utils";
 
 const PROFILE_CHARACTER_SRC = "/profile-character.svg";
 
+/**
+ * Renders the application top bar with search, theme, notifications, and user controls.
+ *
+ * @returns The top bar interface.
+ */
 export function Topbar() {
   const { resolved, toggleColorMode } = useTheme();
   const [user, setUser] = useState<User | null>(null);

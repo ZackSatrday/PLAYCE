@@ -27,6 +27,12 @@ type PlaylistViewProps = {
   videos: Video[];
 };
 
+/**
+ * Renders a playlist player with video selection, playback resumption, and progress tracking.
+ *
+ * @param playlist - The playlist to display.
+ * @param videos - The initial videos available in the playlist.
+ */
 export function PlaylistView({ playlist, videos }: PlaylistViewProps) {
   const { setActiveVideoId } = usePlayer();
   const [items, setItems] = useState<Video[]>(videos);
