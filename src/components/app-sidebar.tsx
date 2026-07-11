@@ -33,7 +33,7 @@ export function AppSidebar({ pathname }: AppSidebarProps) {
   }
 
   return (
-    <aside className="sticky top-0 flex h-dvh w-[220px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--surface)] px-3 py-6">
+    <aside className="sticky top-0 hidden h-dvh w-[220px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--surface)] px-3 py-6 md:flex">
       <div className="px-3 pb-8">
         <p className="font-display text-lg font-bold tracking-[0.12em] text-[var(--foreground)]">
           PLAYCE

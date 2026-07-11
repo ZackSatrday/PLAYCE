@@ -179,7 +179,7 @@ export function DashboardContent() {
         </p>
       </header>
 
-      <section className="mb-12 grid gap-8 sm:grid-cols-3">
+      <section className="mb-12 grid grid-cols-3 gap-4 sm:gap-8">
         <StatBlock
           label="PLAYLISTS SAVED"
           value={isLoading ? "…" : String(stats.playlistCount)}
