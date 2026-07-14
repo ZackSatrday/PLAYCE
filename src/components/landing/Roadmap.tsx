@@ -13,7 +13,7 @@ export function Roadmap() {
   return (
     <section className="max-w-[720px] mx-auto px-4 mb-24">
       <h2 className="text-xl font-display font-bold text-[#F5F5F5] mb-6 text-center md:text-left">
-        What's coming
+        What&apos;s coming
       </h2>
       <div className="flex flex-wrap gap-3 justify-center md:justify-start">
         {roadmapItems.map((item, i) => (

@@ -22,7 +22,6 @@ export function AmbientBackground() {
       canvas.height = height;
     };
     setSize();
-    window.addEventListener("resize", setSize);
 
     const isMobile = window.innerWidth < 768;
     const dotCount = isMobile ? 10 : 30;
@@ -76,7 +75,6 @@ export function AmbientBackground() {
     render();
 
     return () => {
-      window.removeEventListener("resize", setSize);
       window.removeEventListener("resize", handleResize);
       cancelAnimationFrame(animationFrameId);
     };

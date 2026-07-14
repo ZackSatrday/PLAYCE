@@ -28,7 +28,7 @@ export function Hero() {
       <div className="w-full bg-[#111111] border border-white/10 rounded-2xl p-6 md:p-8 text-left shadow-2xl overflow-hidden relative">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-accent to-transparent opacity-20"></div>
         <div className="flex items-center gap-4 mb-6">
-          <div className="w-12 h-12 bg-white/5 rounded-lg flex items-center justify-center flex-shrink-0">
+          <div className="w-12 h-12 bg-white/5 rounded-lg flex items-center justify-center shrink-0">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-accent">
               <polygon points="5 3 19 12 5 21 5 3"></polygon>
             </svg>

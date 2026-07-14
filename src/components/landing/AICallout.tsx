@@ -20,7 +20,7 @@ export function AICallout() {
               AI-powered video summaries
             </h2>
             <p className="text-[#6B7280] text-sm leading-relaxed mb-0">
-              Skip the fluff. We're building AI that automatically generates chapter markers, extracts key concepts, and summarizes long tutorials so you can find exactly what you need in seconds.
+              Skip the fluff. We&apos;re building AI that automatically generates chapter markers, extracts key concepts, and summarizes long tutorials so you can find exactly what you need in seconds.
             </p>
           </div>
           
