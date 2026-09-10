@@ -196,19 +196,35 @@ export function YoutubeEmbed({
   }, [videoId, resumeTimestampRef]);
 
   useEffect(() => {
-    const onBeforeUnload = () => {
-      const t = playerRef.current?.getCurrentTime?.() ?? 0;
-      if (t > 5) {
-        void saveProgress(
-          playlistDbId,
-          activeVideoRef.current,
-          Math.floor(t),
-        );
+    async function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        const time = playerRef.current?.getCurrentTime?.() ?? 0;
+        const vid = activeVideoRef.current;
+        if (vid && time > 5) {
+          await saveProgress(playlistDbId, vid, Math.floor(time));
+        }
       }
-    };
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [playlistDbId]);
 
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  useEffect(() => {
+    function handlePageHide() {
+      const time = playerRef.current?.getCurrentTime?.() ?? 0;
+      const vid = activeVideoRef.current;
+      if (vid && time > 5) {
+        const payload = JSON.stringify({
+          playlist_id: playlistDbId,
+          video_id: vid,
+          timestamp_sec: Math.floor(time),
+        });
+        navigator.sendBeacon("/api/save-progress", payload);
+      }
+    }
+    window.addEventListener("pagehide", handlePageHide);
+    return () => window.removeEventListener("pagehide", handlePageHide);
   }, [playlistDbId]);
 
   return (
