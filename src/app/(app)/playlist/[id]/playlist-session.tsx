@@ -15,5 +15,15 @@ export function PlaylistSession({ playlistId }: { playlistId: string }) {
     };
   }, [playlistId, setActivePlaylistId, setActiveVideoId]);
 
+  useEffect(() => {
+    function handlePageShow(e: PageTransitionEvent) {
+      if (e.persisted) {
+        console.log("restored from bfcache");
+      }
+    }
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, []);
+
   return null;
 }
