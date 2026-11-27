@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/helpers/register-alias.mjs --test \"tests/**/*.test.mjs\""
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.0",
@@ -22,6 +23,7 @@
     "postcss": "^8.5.10"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.6.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
