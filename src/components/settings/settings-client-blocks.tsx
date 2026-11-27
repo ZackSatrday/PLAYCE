@@ -131,7 +131,7 @@ export function SettingsPurgeAllData() {
   const onPurge = async () => {
     setMessage(null);
     const ok = window.confirm(
-      "Delete all your playlists, watch progress, and reset local preferences? This cannot be undone.",
+      "Delete all your playlists, courses, watch progress, and reset local preferences? This cannot be undone.",
     );
     if (!ok) return;
 
@@ -161,8 +161,9 @@ export function SettingsPurgeAllData() {
         DANGER ZONE
       </p>
       <p className="mt-2 max-w-lg text-xs leading-relaxed text-[var(--muted)]">
-        Permanently remove all playlists and watch progress from your account, and reset
-        theme preference stored on this device. This cannot be undone.
+        Permanently remove all playlists, courses, and watch progress from your
+        account, and reset theme preference stored on this device. This cannot be
+        undone.
       </p>
       <button
         type="button"

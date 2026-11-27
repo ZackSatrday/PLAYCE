@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Deletes all playlists and watch progress for the signed-in user.
+ * Deletes all playlists, LMS courses, and watch progress for the signed-in user.
  */
 export async function DELETE() {
   const supabase = await createClient();
@@ -58,6 +58,19 @@ export async function DELETE() {
   if (playlistsError) {
     return NextResponse.json(
       { error: playlistsError.message },
+      { status: 500 },
+    );
+  }
+
+  // LMS content: deleting the course cascades to its modules and lessons.
+  const { error: coursesError } = await supabase
+    .from("courses")
+    .delete()
+    .eq("user_id", user.id);
+
+  if (coursesError) {
+    return NextResponse.json(
+      { error: coursesError.message },
       { status: 500 },
     );
   }

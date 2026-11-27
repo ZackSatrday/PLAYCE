@@ -22,12 +22,22 @@ export function extractYoutubePlaylistId(input: string): string | null {
   return null;
 }
 
-function parseIso8601Duration(iso: string): string {
-  const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-  if (!m) return "0:00";
-  const h = Number(m[1] ?? 0);
-  const min = Number(m[2] ?? 0);
-  const s = Number(m[3] ?? 0);
+export function parseIso8601DurationSeconds(iso: string): number {
+  const m = iso.match(
+    /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/,
+  );
+  if (!m) return 0;
+  const days = Number(m[1] ?? 0);
+  const hours = Number(m[2] ?? 0);
+  const minutes = Number(m[3] ?? 0);
+  const seconds = Number(m[4] ?? 0);
+  return days * 86400 + hours * 3600 + minutes * 60 + seconds;
+}
+
+function formatDurationSeconds(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600);
+  const min = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
   if (h > 0) {
     return `${h}:${String(min).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   }
@@ -82,6 +92,7 @@ export type YoutubePlaylistVideo = {
   title: string;
   thumbnail: string;
   durationLabel: string;
+  durationSeconds: number;
   position: number;
 };
 
@@ -126,13 +137,19 @@ async function fetchVideoDetails(
       title: string;
       thumbnail: string;
       durationLabel: string;
+      durationSeconds: number;
     }
   >
 > {
   const key = requireKey();
   const map = new Map<
     string,
-    { title: string; thumbnail: string; durationLabel: string }
+    {
+      title: string;
+      thumbnail: string;
+      durationLabel: string;
+      durationSeconds: number;
+    }
   >();
 
   for (let i = 0; i < videoIds.length; i += 50) {
@@ -155,13 +172,14 @@ async function fetchVideoDetails(
       }>;
     };
     for (const v of data.items ?? []) {
-      const dur = v.contentDetails?.duration
-        ? parseIso8601Duration(v.contentDetails.duration)
-        : "0:00";
+      const durationSeconds = v.contentDetails?.duration
+        ? parseIso8601DurationSeconds(v.contentDetails.duration)
+        : 0;
       map.set(v.id, {
         title: v.snippet?.title ?? "Video",
         thumbnail: v.snippet?.thumbnails?.medium?.url ?? "",
-        durationLabel: dur,
+        durationLabel: formatDurationSeconds(durationSeconds),
+        durationSeconds,
       });
     }
   }
@@ -184,6 +202,7 @@ export async function fetchYoutubePlaylistVideos(
       title: d?.title ?? "Video",
       thumbnail: d?.thumbnail ?? "",
       durationLabel: d?.durationLabel ?? "0:00",
+      durationSeconds: d?.durationSeconds ?? 0,
       position,
     };
   });
