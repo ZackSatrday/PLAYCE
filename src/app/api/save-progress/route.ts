@@ -15,13 +15,21 @@ export async function POST(request: Request) {
     let nextCompleted = completed === true;
 
     if (!nextCompleted) {
-      const { data: existing } = await supabase
+      const { data: existing, error: lookupError } = await supabase
         .from("progress")
         .select("completed")
         .eq("user_id", user.id)
         .eq("playlist_id", playlist_id)
         .eq("video_id", video_id)
         .maybeSingle();
+
+      if (lookupError) {
+        return NextResponse.json(
+          { error: lookupError.message },
+          { status: 500 },
+        );
+      }
+
       if (existing?.completed === true) nextCompleted = true;
     }
 

@@ -30,12 +30,15 @@ export type Progress = {
 
 export type CourseSourceType = "playlist" | "manual";
 
+export type CourseImportStatus = "pending" | "ready";
+
 export type Course = {
   id: string;
   user_id: string;
   title: string;
   source_type: CourseSourceType;
   source_playlist_id: string | null;
+  import_status: CourseImportStatus;
   created_at: string;
 };
 

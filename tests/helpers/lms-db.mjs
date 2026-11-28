@@ -40,6 +40,22 @@ export async function createTestDb() {
     $$;
   `);
 
+  // The save-progress route still writes to the legacy `progress` table. It is
+  // created here (not by an LMS migration) so the completion-preserving trigger
+  // in 0004 can be exercised in tests.
+  await db.exec(`
+    create table if not exists public.progress (
+      id            uuid primary key default gen_random_uuid(),
+      user_id       uuid not null,
+      playlist_id   uuid not null,
+      video_id      text not null,
+      timestamp_sec integer not null default 0,
+      completed     boolean not null default false,
+      updated_at    timestamptz not null default now(),
+      unique (user_id, playlist_id, video_id)
+    );
+  `);
+
   const migrations = (await readdir(MIGRATIONS_DIR))
     .filter((file) => file.endsWith(".sql"))
     .sort();

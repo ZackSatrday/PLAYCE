@@ -39,6 +39,11 @@ export type ImportPlaylistResult = {
   lessonCount: number | null;
 };
 
+type PlaylistCourseRow = {
+  id: string;
+  import_status: "pending" | "ready";
+};
+
 async function findCourseForPlaylist(
   supabase: SupabaseClient,
   userId: string,
@@ -46,7 +51,7 @@ async function findCourseForPlaylist(
 ) {
   const { data, error } = await supabase
     .from("courses")
-    .select("id")
+    .select("id, import_status")
     .eq("user_id", userId)
     .eq("source_playlist_id", ytPlaylistId)
     .maybeSingle();
@@ -55,7 +60,7 @@ async function findCourseForPlaylist(
     throw new PlaylistImportError(error.message, 500);
   }
 
-  return data as { id: string } | null;
+  return data as PlaylistCourseRow | null;
 }
 
 async function deleteCourse(
@@ -86,7 +91,9 @@ async function insertLessons(
  * Fetches a YouTube playlist and persists it as one course, one module, and
  * its ordered lessons for the signed-in user.
  *
- * Idempotent: a second import of the same playlist returns the existing course.
+ * Idempotent: a second import of the same playlist returns the existing course
+ * once its hierarchy is complete. An interrupted import leaves a `pending`
+ * course that the next attempt replaces.
  */
 export async function importPlaylistForUser(
   supabase: SupabaseClient,
@@ -120,7 +127,8 @@ export async function importPlaylistForUser(
     userId,
     meta.yt_playlist_id,
   );
-  if (existing) {
+
+  if (existing?.import_status === "ready") {
     return {
       courseId: existing.id,
       alreadyImported: true,
@@ -128,27 +136,55 @@ export async function importPlaylistForUser(
     };
   }
 
+  if (existing) {
+    // A previous attempt stopped before finishing. Remove it so the retry
+    // starts from a clean hierarchy; the unique index would otherwise block a
+    // second course for the same playlist.
+    const { error: cleanupError } = await supabase
+      .from("courses")
+      .delete()
+      .eq("id", existing.id);
+
+    if (cleanupError) {
+      throw new PlaylistImportError(
+        "Could not clean up an incomplete import. Try again.",
+        500,
+      );
+    }
+  }
+
   const { data: course, error: courseError } = await supabase
     .from("courses")
-    .insert({ user_id: userId, ...plan.course })
+    .insert({
+      user_id: userId,
+      ...plan.course,
+      import_status: "pending",
+    })
     .select("id")
     .single();
 
   if (courseError || !course) {
-    // A concurrent import can win the unique index race. Treat that as an
-    // already-imported playlist instead of surfacing a 500.
+    // A concurrent import can win the unique index race.
     if (courseError?.code === "23505") {
       const raced = await findCourseForPlaylist(
         supabase,
         userId,
         meta.yt_playlist_id,
       );
-      if (raced) {
+
+      if (raced?.import_status === "ready") {
         return {
           courseId: raced.id,
           alreadyImported: true,
           lessonCount: null,
         };
+      }
+
+      if (raced) {
+        throw new PlaylistImportError(
+          "An import for this playlist is already in progress. Try again shortly.",
+          409,
+        );
       }
     }
 
@@ -177,6 +213,23 @@ export async function importPlaylistForUser(
   } catch (error) {
     await deleteCourse(supabase, course.id);
     throw error;
+  }
+
+  // Only now is the hierarchy complete. If this update fails, the course stays
+  // 'pending' and the next import repairs it instead of reporting it as done.
+  const { data: finalized, error: finalizeError } = await supabase
+    .from("courses")
+    .update({ import_status: "ready" })
+    .eq("id", course.id)
+    .select("id")
+    .maybeSingle();
+
+  if (finalizeError || !finalized) {
+    await deleteCourse(supabase, course.id);
+    throw new PlaylistImportError(
+      finalizeError?.message ?? "Could not finalize the course import.",
+      500,
+    );
   }
 
   // Instrumentation must never make a successful import fail.

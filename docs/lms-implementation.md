@@ -168,14 +168,19 @@ The next step is to add the import API route and wire the dashboard's
 | File | Change |
 | --- | --- |
 | `src/lib/lms/import-plan.ts` | Pure mapper from YouTube playlist metadata/videos to the `courses` / `modules` / `lessons` row shapes. Keeps `order_index` equal to playlist position. |
-| `src/lib/lms/import-playlist.ts` | `importPlaylistForUser`: fetches the playlist, creates the course and module, inserts lessons in chunks of 500, rolls the course back if a later step fails, logs `playlist_imported`, and treats a repeated import as idempotent. |
-| `src/app/api/courses/import/route.ts` | `POST /api/courses/import` — auth check, input validation, calls the importer, maps `PlaylistImportError` to 400/502/500. |
+| `src/lib/lms/import-playlist.ts` | `importPlaylistForUser`: fetches the playlist, creates the course as `pending`, writes the module and lessons, then marks it `ready`. Interrupted imports are replaced on retry, and concurrent imports return 409 instead of a half-built course. |
+| `src/lib/lms/import-request.ts` | Runtime validation of the import body: an object with a non-empty string `urlOrId`. |
+| `src/app/api/courses/import/route.ts` | `POST /api/courses/import` — auth check, runtime body validation, calls the importer, maps `PlaylistImportError` to 400/409/502/500. |
 | `src/lib/youtube.ts` | Adds `durationSeconds` to playlist videos and exports `parseIso8601DurationSeconds`. |
 | `src/app/(app)/dashboard/dashboard-content.tsx` | The “Add playlist” flow now also calls `/api/courses/import` after saving the legacy `playlists` row. |
 | `src/app/api/user/purge/route.ts` | Also deletes the user's `courses`; cascade removes modules and lessons. |
 | `supabase/migrations/0002_course_playlist_unique.sql` | Partial unique index on `(user_id, source_playlist_id)` so one playlist maps to one course per user while manual courses stay unconstrained. |
+| `supabase/migrations/0003_course_import_status.sql` | Adds `courses.import_status` (`pending` / `ready`); existing rows default to `ready`. |
+| `supabase/migrations/0004_progress_preserve_completed.sql` | Trigger on the legacy `progress` table that keeps `completed = true` from being cleared by a stale write. No-op if the table is absent. |
 | `tests/lms/phase1-import.test.mjs` | Covers duration parsing, import ordering, empty playlists, and the per-user uniqueness rule. |
-| `tests/lms/phase1-service.test.mjs` | Exercises `importPlaylistForUser` against a fake Supabase client: hierarchy writes, idempotency, rollback, and invalid input. |
+| `tests/lms/phase1-service.test.mjs` | Exercises `importPlaylistForUser` against a fake Supabase client: hierarchy writes, idempotency, rollback, interrupted-import repair, and invalid input. |
+| `tests/lms/import-request.test.mjs` | Rejects null/non-object bodies, non-string values, and empty strings; trims valid input. |
+| `tests/lms/progress-completed.test.mjs` | Proves the `progress` trigger preserves `completed = true` while still updating `timestamp_sec`. |
 | `tests/helpers/alias-loader.mjs` + `register-alias.mjs` | Lets Node tests resolve the app's `@/` import alias and extensionless `.ts` imports. |
 | `tests/helpers/lms-db.mjs` | Now applies every `supabase/migrations/*.sql` in sorted order instead of one hard-coded file. |
 
@@ -186,14 +191,19 @@ The next step is to add the import API route and wire the dashboard's
 3. Build the plan: course title + `source_type = 'playlist'` +
    `source_playlist_id`; one module titled “Videos”; one lesson per video with
    `order_index` = playlist position.
-4. Insert the course as the signed-in user (RLS enforces ownership).
+4. Insert the course as the signed-in user with `import_status = 'pending'`
+   (RLS enforces ownership).
 5. Insert the module, then lessons in chunks of 500.
-6. On any failure after the course insert, delete the course; the
-   `on delete cascade` removes the partial module/lessons.
-7. Insert a `playlist_imported` usage event with `meta.lesson_count` and
+6. Mark the course `ready`. Only then can a later import return
+   `alreadyImported: true`.
+7. On failure, delete the course (cascade removes the partial hierarchy). If
+   that cleanup also fails, the `pending` row is left behind and the next import
+   deletes and replaces it.
+8. Insert a `playlist_imported` usage event with `meta.lesson_count` and
    `meta.course_id` (best-effort; instrumentation cannot fail the import).
-8. A second import of the same playlist returns `alreadyImported: true` and the
-   existing `courseId`.
+9. A concurrent import that loses the unique-index race returns
+   `alreadyImported: true` if the winner is `ready`, or `409` if it is still
+   `pending`.
 
 ### Verification
 
@@ -206,8 +216,14 @@ npm test
 ✔ import creates one course, one module, and ordered lessons
 ✔ importing the same playlist twice returns the existing course
 ✔ a failed lesson insert rolls the course back
+✔ an interrupted import is replaced on the next attempt
 ✔ input without a playlist id is rejected before any fetch
-tests 16 | pass 16 | fail 0
+✔ parseImportUrlOrId accepts a non-empty string and trims it
+✔ parseImportUrlOrId rejects null bodies and non-string values
+✔ parseImportUrlOrId rejects empty and whitespace-only strings
+✔ an upsert with completed=false cannot clear a stored true
+✔ an incomplete row stays incomplete and can later be completed
+tests 22 | pass 22 | fail 0
 ```
 
 ```text
@@ -220,9 +236,31 @@ Route (app)
 
 `npx eslint` on every file added or changed by Phase 1 reports no problems.
 
-Live schema: both migrations were applied in the Supabase SQL editor on
+Live schema: `0001` and `0002` were applied in the Supabase SQL editor on
 2026-11-27, and `information_schema.tables` returned `courses`, `modules`,
-`lessons`, and `usage_events`.
+`lessons`, and `usage_events`. `0003` and `0004` were added during review and
+still need to be applied before the next live test.
+
+### Review fixes (post-Phase 1)
+
+1. **Import body validation.** `POST /api/courses/import` parsed JSON with a
+   cast and then called `.trim()` on `body.urlOrId`. A `null` body or a
+   non-string value threw and returned 500. The route now parses as `unknown`
+   and `parseImportUrlOrId` returns 400 for anything that is not an object with
+   a non-empty string `urlOrId`; valid strings are still trimmed.
+2. **Save-progress lookup error.** The completion lookup ignored its Supabase
+   error and could proceed with a stale `completed: false`. It now returns 500
+   with the lookup message before the upsert.
+3. **Atomic completion preservation.** The handler’s read-then-upsert could
+   still race another write and downgrade `true` to `false`. Migration `0004`
+   adds a `BEFORE INSERT OR UPDATE` trigger on `progress` that keeps `completed`
+   monotonic; timestamp updates and the existing `onConflict` key are unchanged.
+4. **Import atomicity.** A failed lesson chunk could leave a course that the
+   next import treated as complete. Courses now carry `import_status`:
+   `pending` during the import, `ready` only after the hierarchy is written.
+   `alreadyImported` is returned only for `ready` courses; a leftover `pending`
+   course is deleted and rebuilt on retry, and a concurrent `pending` import
+   returns 409 instead of a partial hierarchy.
 
 ### Errors, bugs, and fixes
 

@@ -22,7 +22,7 @@ const deps = {
  * Minimal stand-in for the Supabase client surface the importer uses. Records
  * every operation so tests can assert the hierarchy that was written.
  */
-function createFakeSupabase({ courses = [], failOn = null } = {}) {
+function createFakeSupabase({ courses = [], failOn = () => false } = {}) {
   const calls = [];
   const db = {
     courses: [...courses],
@@ -47,6 +47,11 @@ function createFakeSupabase({ courses = [], failOn = null } = {}) {
         this.payload = payload;
         return this;
       },
+      update(payload) {
+        this.op = "update";
+        this.payload = payload;
+        return this;
+      },
       delete() {
         this.op = "delete";
         return this;
@@ -59,7 +64,7 @@ function createFakeSupabase({ courses = [], failOn = null } = {}) {
         return this.filters.every(([col, value]) => row[col] === value);
       },
       run() {
-        if (failOn && failOn.table === table && failOn.op === this.op) {
+        if (failOn(table, this.op)) {
           return {
             data: null,
             error: { message: `simulated ${table} ${this.op} failure` },
@@ -78,6 +83,17 @@ function createFakeSupabase({ courses = [], failOn = null } = {}) {
             data: Array.isArray(this.payload) ? inserted : inserted[0],
             error: null,
           };
+        }
+
+        if (this.op === "update") {
+          const updated = [];
+          for (const row of db[table]) {
+            if (this.matches(row)) {
+              Object.assign(row, this.payload);
+              updated.push(row);
+            }
+          }
+          return { data: updated, error: null };
         }
 
         if (this.op === "select") {
@@ -144,6 +160,7 @@ test("import creates one course, one module, and ordered lessons", async () => {
   assert.equal(course.title, "Algebra");
   assert.equal(course.source_type, "playlist");
   assert.equal(course.source_playlist_id, "PL123");
+  assert.equal(course.import_status, "ready");
 
   assert.equal(supabase.db.modules.length, 1);
   assert.equal(supabase.db.modules[0].course_id, course.id);
@@ -161,6 +178,11 @@ test("import creates one course, one module, and ordered lessons", async () => {
   );
   assert.ok(supabase.db.lessons.every((lesson) => lesson.module_id === supabase.db.modules[0].id));
 
+  assert.deepEqual(
+    supabase.calls.filter((call) => call.op === "update"),
+    [{ table: "courses", op: "update", payload: { import_status: "ready" } }],
+  );
+
   assert.equal(supabase.db.usage_events.length, 1);
   assert.equal(supabase.db.usage_events[0].event_type, "playlist_imported");
   assert.equal(supabase.db.usage_events[0].meta.lesson_count, 2);
@@ -174,6 +196,7 @@ test("importing the same playlist twice returns the existing course", async () =
         id: "course-existing",
         user_id: USER_A,
         source_playlist_id: "PL123",
+        import_status: "ready",
       },
     ],
   });
@@ -198,7 +221,7 @@ test("importing the same playlist twice returns the existing course", async () =
 
 test("a failed lesson insert rolls the course back", async () => {
   const supabase = createFakeSupabase({
-    failOn: { table: "lessons", op: "insert" },
+    failOn: (table, op) => table === "lessons" && op === "insert",
   });
 
   await assert.rejects(
@@ -212,6 +235,40 @@ test("a failed lesson insert rolls the course back", async () => {
   assert.equal(supabase.db.modules.length, 0);
   assert.equal(supabase.db.lessons.length, 0);
   assert.equal(supabase.db.usage_events.length, 0);
+});
+
+test("an interrupted import is replaced on the next attempt", async () => {
+  let failing = true;
+  const supabase = createFakeSupabase({
+    failOn: (table, op) =>
+      failing &&
+      ((table === "lessons" && op === "insert") ||
+        (table === "courses" && op === "delete")),
+  });
+
+  // First attempt: lessons fail and cleanup also fails, leaving a `pending`
+  // course behind. It must not be reported as already imported.
+  await assert.rejects(
+    () => importPlaylistForUser(supabase, USER_A, PLAYLIST_URL, deps),
+    (error) => error instanceof PlaylistImportError,
+  );
+  assert.equal(supabase.db.courses.length, 1);
+  assert.equal(supabase.db.courses[0].import_status, "pending");
+
+  failing = false;
+  const result = await importPlaylistForUser(
+    supabase,
+    USER_A,
+    PLAYLIST_URL,
+    deps,
+  );
+
+  assert.equal(result.alreadyImported, false);
+  assert.equal(supabase.db.courses.length, 1);
+  assert.equal(supabase.db.courses[0].import_status, "ready");
+  assert.equal(supabase.db.modules.length, 1);
+  assert.equal(supabase.db.lessons.length, 2);
+  assert.equal(supabase.db.usage_events.length, 1);
 });
 
 test("input without a playlist id is rejected before any fetch", async () => {
