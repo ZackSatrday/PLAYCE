@@ -93,7 +93,29 @@ export function DashboardContent() {
           setAddError(body.error ?? "Could not add playlist");
           return;
         }
-        if (body.alreadySaved) {
+
+        // The player still reads the legacy `playlists` table, so the same
+        // input is also imported into the LMS hierarchy (courses -> modules ->
+        // lessons). This second call is idempotent.
+        const importRes = await fetch("/api/courses/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ urlOrId: trimmed }),
+        });
+        const importBody = (await importRes.json()) as {
+          error?: string;
+          alreadyImported?: boolean;
+        };
+        if (!importRes.ok) {
+          setAddError(
+            importBody.error ??
+              "Playlist saved, but its course could not be created.",
+          );
+          await refresh();
+          return;
+        }
+
+        if (body.alreadySaved || importBody.alreadyImported) {
           setAddMessage("That playlist is already in your library.");
           await refresh();
           return;
@@ -128,8 +150,8 @@ export function DashboardContent() {
     <div className="mx-auto w-full max-w-[1200px] flex-1 px-6 pb-10 pt-8">
       <AddPlaylistModal open={addPlaylistOpen} onClose={closeAddPlaylist}>
         <p className="mb-4 text-sm text-[var(--muted)]">
-          Paste a full YouTube playlist URL or its list ID. We will fetch the title
-          and save it to your library.
+          Paste a full YouTube playlist URL or its list ID. We will fetch the
+          videos and build a course from them.
         </p>
         <form onSubmit={onAdd} className="flex flex-col gap-4">
           <label className="block min-w-0">
