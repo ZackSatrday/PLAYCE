@@ -12,6 +12,18 @@ import {
 } from "@/lib/lms/import-plan";
 
 const LESSON_INSERT_CHUNK_SIZE = 500;
+const IMPORT_LEASE_MS = 5 * 60 * 1000;
+
+function leaseUntil(now = Date.now()) {
+  return new Date(now + IMPORT_LEASE_MS).toISOString();
+}
+
+function importInProgress() {
+  return new PlaylistImportError(
+    "An import for this playlist is already in progress. Try again shortly.",
+    409,
+  );
+}
 
 export type PlaylistImportDeps = {
   fetchMeta: (playlistId: string) => Promise<PlaylistMetaInput>;
@@ -63,11 +75,18 @@ async function findCourseForPlaylist(
   return data as PlaylistCourseRow | null;
 }
 
-async function deleteCourse(
+function deletePendingCourse(
   supabase: SupabaseClient,
   courseId: string,
-): Promise<void> {
-  await supabase.from("courses").delete().eq("id", courseId);
+  lease: string,
+) {
+  return supabase
+    .from("courses")
+    .delete()
+    .eq("id", courseId)
+    .eq("import_status", "pending")
+    .eq("import_lease_expires_at", lease)
+    .gt("import_lease_expires_at", new Date().toISOString());
 }
 
 async function insertLessons(
@@ -93,7 +112,7 @@ async function insertLessons(
  *
  * Idempotent: a second import of the same playlist returns the existing course
  * once its hierarchy is complete. An interrupted import leaves a `pending`
- * course that the next attempt replaces.
+ * course that a retry can replace once its lease expires.
  */
 export async function importPlaylistForUser(
   supabase: SupabaseClient,
@@ -137,13 +156,34 @@ export async function importPlaylistForUser(
   }
 
   if (existing) {
-    // A previous attempt stopped before finishing. Remove it so the retry
-    // starts from a clean hierarchy; the unique index would otherwise block a
-    // second course for the same playlist.
-    const { error: cleanupError } = await supabase
+    const now = Date.now();
+    const recoveryLease = leaseUntil(now);
+    // Taking over an expired row always moves its lease forward. The expiry
+    // value therefore also identifies the owner of this specific course row.
+    const { data: claimed, error: claimError } = await supabase
       .from("courses")
-      .delete()
-      .eq("id", existing.id);
+      .update({ import_lease_expires_at: recoveryLease })
+      .eq("id", existing.id)
+      .eq("import_status", "pending")
+      .lte("import_lease_expires_at", new Date(now).toISOString())
+      .select("id")
+      .maybeSingle();
+
+    if (claimError) {
+      throw new PlaylistImportError(
+        "Could not claim an incomplete import. Try again.",
+        500,
+      );
+    }
+    if (!claimed) {
+      throw importInProgress();
+    }
+
+    const { data: deleted, error: cleanupError } = await deletePendingCourse(
+      supabase,
+      existing.id,
+      recoveryLease,
+    ).select("id").maybeSingle();
 
     if (cleanupError) {
       throw new PlaylistImportError(
@@ -151,14 +191,19 @@ export async function importPlaylistForUser(
         500,
       );
     }
+    if (!deleted) {
+      throw importInProgress();
+    }
   }
 
+  const lease = leaseUntil();
   const { data: course, error: courseError } = await supabase
     .from("courses")
     .insert({
       user_id: userId,
       ...plan.course,
       import_status: "pending",
+      import_lease_expires_at: lease,
     })
     .select("id")
     .single();
@@ -181,10 +226,7 @@ export async function importPlaylistForUser(
       }
 
       if (raced) {
-        throw new PlaylistImportError(
-          "An import for this playlist is already in progress. Try again shortly.",
-          409,
-        );
+        throw importInProgress();
       }
     }
 
@@ -201,7 +243,7 @@ export async function importPlaylistForUser(
     .single();
 
   if (moduleError || !courseModule) {
-    await deleteCourse(supabase, course.id);
+    await deletePendingCourse(supabase, course.id, lease);
     throw new PlaylistImportError(
       moduleError?.message ?? "Could not create module",
       500,
@@ -211,25 +253,27 @@ export async function importPlaylistForUser(
   try {
     await insertLessons(supabase, courseModule.id, plan);
   } catch (error) {
-    await deleteCourse(supabase, course.id);
+    await deletePendingCourse(supabase, course.id, lease);
     throw error;
   }
 
-  // Only now is the hierarchy complete. If this update fails, the course stays
-  // 'pending' and the next import repairs it instead of reporting it as done.
+  // Only the current lease holder can finalize the completed hierarchy.
   const { data: finalized, error: finalizeError } = await supabase
     .from("courses")
     .update({ import_status: "ready" })
     .eq("id", course.id)
+    .eq("import_status", "pending")
+    .eq("import_lease_expires_at", lease)
+    .gt("import_lease_expires_at", new Date().toISOString())
     .select("id")
     .maybeSingle();
 
   if (finalizeError || !finalized) {
-    await deleteCourse(supabase, course.id);
-    throw new PlaylistImportError(
-      finalizeError?.message ?? "Could not finalize the course import.",
-      500,
-    );
+    await deletePendingCourse(supabase, course.id, lease);
+    if (finalizeError) {
+      throw new PlaylistImportError(finalizeError.message, 500);
+    }
+    throw importInProgress();
   }
 
   // Instrumentation must never make a successful import fail.

@@ -57,11 +57,19 @@ function createFakeSupabase({ courses = [], failOn = () => false } = {}) {
         return this;
       },
       eq(col, value) {
-        this.filters.push([col, value]);
+        this.filters.push((row) => row[col] === value);
+        return this;
+      },
+      gt(col, value) {
+        this.filters.push((row) => row[col] > value);
+        return this;
+      },
+      lte(col, value) {
+        this.filters.push((row) => row[col] <= value);
         return this;
       },
       matches(row) {
-        return this.filters.every(([col, value]) => row[col] === value);
+        return this.filters.every((filter) => filter(row));
       },
       run() {
         if (failOn(table, this.op)) {
@@ -115,18 +123,17 @@ function createFakeSupabase({ courses = [], failOn = () => false } = {}) {
             db.lessons = db.lessons.filter((row) => !moduleIds.has(row.module_id));
           }
 
-          return { data: null, error: null };
+          return { data: removed, error: null };
         }
 
         return { data: null, error: null };
       },
       maybeSingle() {
-        const { data } = this.run();
-        return Promise.resolve({ data: data?.[0] ?? null, error: null });
+        const { data, error } = this.run();
+        return Promise.resolve({ data: data?.[0] ?? null, error });
       },
       single() {
-        const { data } = this.run();
-        return Promise.resolve({ data, error: null });
+        return Promise.resolve(this.run());
       },
       then(onFulfilled, onRejected) {
         return Promise.resolve(this.run()).then(onFulfilled, onRejected);
@@ -237,7 +244,8 @@ test("a failed lesson insert rolls the course back", async () => {
   assert.equal(supabase.db.usage_events.length, 0);
 });
 
-test("an interrupted import is replaced on the next attempt", async () => {
+test("a retry returns 409 while the lease is active and replaces the course after expiry", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-01-01T00:00:00Z") });
   let failing = true;
   const supabase = createFakeSupabase({
     failOn: (table, op) =>
@@ -256,6 +264,15 @@ test("an interrupted import is replaced on the next attempt", async () => {
   assert.equal(supabase.db.courses[0].import_status, "pending");
 
   failing = false;
+  const original = supabase.db.courses[0];
+  await assert.rejects(
+    () => importPlaylistForUser(supabase, USER_A, PLAYLIST_URL, deps),
+    (error) => error instanceof PlaylistImportError && error.status === 409,
+  );
+  assert.equal(supabase.db.courses[0], original);
+  assert.equal(supabase.db.modules[0].course_id, original.id);
+
+  t.mock.timers.setTime(Date.parse(original.import_lease_expires_at));
   const result = await importPlaylistForUser(
     supabase,
     USER_A,
@@ -264,11 +281,51 @@ test("an interrupted import is replaced on the next attempt", async () => {
   );
 
   assert.equal(result.alreadyImported, false);
+  assert.notEqual(result.courseId, original.id);
   assert.equal(supabase.db.courses.length, 1);
   assert.equal(supabase.db.courses[0].import_status, "ready");
   assert.equal(supabase.db.modules.length, 1);
   assert.equal(supabase.db.lessons.length, 2);
   assert.equal(supabase.db.usage_events.length, 1);
+});
+
+test("an importer cannot finalize or clean up after losing its lease", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-01-01T00:00:00Z") });
+  let replacementLease;
+  const supabase = createFakeSupabase({
+    failOn: (table, op) => {
+      if (table === "lessons" && op === "insert") {
+        const [course] = supabase.db.courses;
+        const expiresAt = Date.parse(course.import_lease_expires_at);
+        t.mock.timers.setTime(expiresAt);
+        replacementLease = new Date(expiresAt + 60_000).toISOString();
+        course.import_lease_expires_at = replacementLease;
+      }
+      return false;
+    },
+  });
+
+  await assert.rejects(
+    () => importPlaylistForUser(supabase, USER_A, PLAYLIST_URL, deps),
+    (error) => error instanceof PlaylistImportError && error.status === 409,
+  );
+  assert.equal(supabase.db.courses.length, 1);
+  assert.equal(supabase.db.courses[0].import_status, "pending");
+  assert.equal(supabase.db.courses[0].import_lease_expires_at, replacementLease);
+  assert.equal(supabase.db.usage_events.length, 0);
+});
+
+test("lookup and module insert errors are reported by the importer", async () => {
+  for (const [table, op] of [["courses", "select"], ["modules", "insert"]]) {
+    const supabase = createFakeSupabase({
+      failOn: (candidateTable, candidateOp) => candidateTable === table && candidateOp === op,
+    });
+    await assert.rejects(
+      () => importPlaylistForUser(supabase, USER_A, PLAYLIST_URL, deps),
+      { message: `simulated ${table} ${op} failure`, status: 500 },
+    );
+    assert.equal(supabase.db.courses.length, 0);
+  }
 });
 
 test("input without a playlist id is rejected before any fetch", async () => {

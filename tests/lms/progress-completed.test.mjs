@@ -18,21 +18,24 @@ async function upsertProgress(db, { timestamp, completed }) {
   );
 }
 
-test("an upsert with completed=false cannot clear a stored true", async () => {
+test("upserts preserve stored completion and still update the timestamp", async () => {
   const ctx = await createTestDb();
   try {
     const { db } = ctx;
+    await db.exec("alter table public.progress alter column completed drop not null");
     await upsertProgress(db, { timestamp: 10, completed: true });
-    await upsertProgress(db, { timestamp: 99, completed: false });
 
-    const row = (
-      await db.query(
-        "select timestamp_sec, completed from public.progress where video_id = 'video-1'",
-      )
-    ).rows[0];
+    for (const [completed, timestamp] of [[false, 20], [null, 30], [true, 40]]) {
+      await upsertProgress(db, { timestamp, completed });
 
-    assert.equal(row.completed, true);
-    assert.equal(row.timestamp_sec, 99);
+      const row = (
+        await db.query(
+          "select timestamp_sec, completed from public.progress where video_id = 'video-1'",
+        )
+      ).rows[0];
+
+      assert.deepEqual(row, { completed: true, timestamp_sec: timestamp });
+    }
   } finally {
     await ctx.close();
   }

@@ -168,7 +168,7 @@ The next step is to add the import API route and wire the dashboard's
 | File | Change |
 | --- | --- |
 | `src/lib/lms/import-plan.ts` | Pure mapper from YouTube playlist metadata/videos to the `courses` / `modules` / `lessons` row shapes. Keeps `order_index` equal to playlist position. |
-| `src/lib/lms/import-playlist.ts` | `importPlaylistForUser`: fetches the playlist, creates the course as `pending`, writes the module and lessons, then marks it `ready`. Interrupted imports are replaced on retry, and concurrent imports return 409 instead of a half-built course. |
+| `src/lib/lms/import-playlist.ts` | `importPlaylistForUser`: fetches the playlist, creates the course as `pending`, writes the module and lessons, then marks it `ready`. A retry can replace an interrupted import after its five-minute lease expires; an active lease returns 409. |
 | `src/lib/lms/import-request.ts` | Runtime validation of the import body: an object with a non-empty string `urlOrId`. |
 | `src/app/api/courses/import/route.ts` | `POST /api/courses/import` — auth check, runtime body validation, calls the importer, maps `PlaylistImportError` to 400/409/502/500. |
 | `src/lib/youtube.ts` | Adds `durationSeconds` to playlist videos and exports `parseIso8601DurationSeconds`. |
@@ -192,13 +192,13 @@ The next step is to add the import API route and wire the dashboard's
    `source_playlist_id`; one module titled “Videos”; one lesson per video with
    `order_index` = playlist position.
 4. Insert the course as the signed-in user with `import_status = 'pending'`
-   (RLS enforces ownership).
+   and a five-minute lease (RLS enforces ownership).
 5. Insert the module, then lessons in chunks of 500.
-6. Mark the course `ready`. Only then can a later import return
-   `alreadyImported: true`.
-7. On failure, delete the course (cascade removes the partial hierarchy). If
-   that cleanup also fails, the `pending` row is left behind and the next import
-   deletes and replaces it.
+6. Mark the course `ready` while its lease is still valid. Only then can a
+   later import return `alreadyImported: true`.
+7. On failure, the lease holder can delete the pending course (cascade removes
+   the partial hierarchy). A retry can claim and replace a leftover course
+   once the lease expires.
 8. Insert a `playlist_imported` usage event with `meta.lesson_count` and
    `meta.course_id` (best-effort; instrumentation cannot fail the import).
 9. A concurrent import that loses the unique-index race returns
@@ -259,8 +259,8 @@ still need to be applied before the next live test.
    next import treated as complete. Courses now carry `import_status`:
    `pending` during the import, `ready` only after the hierarchy is written.
    `alreadyImported` is returned only for `ready` courses; a leftover `pending`
-   course is deleted and rebuilt on retry, and a concurrent `pending` import
-   returns 409 instead of a partial hierarchy.
+   course can be claimed and rebuilt after the lease expires. A retry during
+   an active lease returns 409.
 
 ### Errors, bugs, and fixes
 
